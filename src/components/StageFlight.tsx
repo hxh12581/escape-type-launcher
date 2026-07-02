@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 
-const WORKFLOW_API = 'https://ws7jqgs82z.coze.site/run';
-const WORKFLOW_TOKEN = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjVmZjdiZDFhLTVmNDUtNGY4Mi04ZTg1LWQ4ZWQwNGFlN2NhNiJ9.eyJpc3MiOiJodHRwczovL2FwaS5jb3plLmNuIiwiYXVkIjpbImk2OUo1U1YzTENsVDhIdU01SHVINHNQUXZJVXBubEQ4Il0sImV4cCI6ODIxMDI2Njg3Njc5OSwiaWF0IjoxNzgyOTYwNDQxLCJzdWIiOiJzcGlmZmU6Ly9hcGkuY296ZS5jbi93b3JrbG9hZF9pZGVudGl0eS9pZDo3NjU3NzU0ODQzOTgwNzU5MDk0Iiwic3JjIjoiaW5ib3VuZF9hdXRoX2FjY2Vzc190b2tlbl9pZDo3NjU3NzU2Nzg3NDM2NjgzMzE2In0.gX2ifvUaHb_d1r9RxqHcNNpXx99JkJonOy3RZZ2UXRsgZ-_HtIeKq-wFdmaUXQyb-gVhRTBXJm0cF_MaST2TbYto5yZhxd5MyVa1mocm5GRZ4_OsjYXgZtMwO79Hjj0eAzc5bw5dQfLv_cAFM3UpYNxgw0BJ1-J9BMB1Z5w6NXXKkCoSiF_tASLuhvB9VoCYArIm_WgCQynhHDa8IFfCq7wXw1kDgaJp2AFPYPt0jt8BZxWtElBTIyBaBK-e4VlS1xQN73pkxDOcit51MRTlY3ZtX_vl9Yzk77Pa_mUm2jOXvyQWvPPuRZWVTnzsQqMtsNHjtndM4ktCDpPwqirQGA';
+const WORKFLOW_API = '/api/run';
 
 interface StageFlightProps {
   energyLevel: 'red' | 'yellow' | 'green';
@@ -35,12 +34,6 @@ const ENERGY_META = {
   green:  { badge: '🟢 高能量', tip: '完整流程：写想法 → AI分析分类 → 计时行动 → 碰一下。' },
 };
 
-const QUADRANTS = [
-  { id: 'urgent_important', emoji: '🔥', label: '重要且紧急', desc: '现在不做会出事' },
-  { id: 'important_not_urgent', emoji: '📌', label: '重要不紧急', desc: '对你长期有价值' },
-  { id: 'urgent_not_important', emoji: '📞', label: '紧急不重要', desc: '可以交给别人' },
-  { id: 'not_urgent_not_important', emoji: '🗑️', label: '不重要不紧急', desc: '可以删掉' },
-];
 
 function parseDuration(duration: string): number {
   const match = duration.match(/(\d+)/);
@@ -59,7 +52,6 @@ export default function StageFlight({
   const [timerState, setTimerState] = useState<'idle' | 'running' | 'done'>('idle');
   const [secondsLeft, setSecondsLeft] = useState(300);
   const [thoughts, setThoughts] = useState('');
-  const [quadrant, setQuadrant] = useState<string | null>(null);
   const [targetAction, setTargetAction] = useState('');
   const [touchedDone, setTouchedDone] = useState(false);
 
@@ -74,6 +66,7 @@ export default function StageFlight({
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const actionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const aiTriggeredRef = useRef(false);
   const meta = ENERGY_META[energyLevel];
 
   useEffect(() => {
@@ -82,6 +75,17 @@ export default function StageFlight({
       if (actionTimerRef.current) clearInterval(actionTimerRef.current);
     };
   }, []);
+
+  // 进入第2层时自动触发AI分析
+  useEffect(() => {
+    if (layer === 2 && aiState === 'idle' && thoughts.trim() && !aiTriggeredRef.current) {
+      aiTriggeredRef.current = true;
+      callAI(thoughts);
+    }
+    if (layer !== 2) {
+      aiTriggeredRef.current = false;
+    }
+  }, [layer]);
 
   const startTimer = () => {
     setTimerState('running');
@@ -122,10 +126,7 @@ export default function StageFlight({
     try {
       const res = await fetch(WORKFLOW_API, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${WORKFLOW_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_thoughts: thoughtText,
           energy_level: energyLevel,
@@ -268,13 +269,13 @@ export default function StageFlight({
         </div>
       )}
 
-      {/* ===== Layer 2: 四象限 + AI分析 + 行动循环 ===== */}
+      {/* ===== Layer 2: AI分析 + 行动循环 ===== */}
       {layer === 2 && (
         <div className="animate-fadeIn">
           <h2 className="text-xl font-semibold mb-2">
             {aiState === 'acting' ? '👟 正在行动' :
              aiState === 'result' ? '🤖 AI分析结果' :
-             '把写下来的事情分个类'}
+             '⏳ AI分析中...'}
           </h2>
 
           {/* Show original thoughts summary unless acting */}
@@ -284,80 +285,18 @@ export default function StageFlight({
             </p>
           )}
 
-          {/* ===== AI State: idle — show quadrants + AI button ===== */}
-          {aiState === 'idle' && !showNewThought && (
-            <>
-              <div className="grid grid-cols-2 gap-3 mb-5">
-                {QUADRANTS.map(q => (
-                  <button
-                    key={q.id}
-                    onClick={() => setQuadrant(q.id)}
-                    className={`p-4 rounded-xl border text-left transition-all hover:shadow-sm active:scale-[0.98] ${
-                      quadrant === q.id
-                        ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                        : 'border-border bg-card'
-                    }`}
-                  >
-                    <div className="text-lg mb-1">{q.emoji}</div>
-                    <div className="font-medium text-sm">{q.label}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{q.desc}</div>
-                  </button>
-                ))}
-              </div>
-
-              {energyLevel !== 'red' && (
-                <div className="bg-card border border-border/30 rounded-2xl p-4 mb-5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-sm">🤖</span>
-                    <span className="text-sm font-medium">让AI帮你分析</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    AI会根据你的想法做四象限分类，并按福格行为模型给出最小行动建议。
-                    <br />
-                    然后你可以直接在页面里开始行动，有计时器跟着。
-                  </p>
-                  <Button size="sm" onClick={() => callAI(thoughts)} className="w-full">
-                    🚀 AI分析并给出建议
-                  </Button>
-                </div>
-              )}
-
-              {aiError && (
-                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-5">
-                  <p className="text-sm text-red-700">{aiError}</p>
-                  <Button variant="ghost" size="sm" onClick={() => callAI(thoughts)} className="text-red-600 mt-1">
-                    重试
-                  </Button>
-                </div>
-              )}
-
-              <div className="flex flex-col gap-2">
-                <Button onClick={advance} className="w-full" disabled={!quadrant}>
-                  已分类，继续
-                </Button>
-                <Button variant="ghost" onClick={advance} className="text-muted-foreground text-xs">
-                  跳过分类也行
-                </Button>
-                <Button variant="ghost" onClick={goBack} className="text-muted-foreground">
-                  ← 返回
-                </Button>
-              </div>
-            </>
-          )}
-
-          {/* ===== AI State: loading ===== */}
+          {/* ===== AI loading ===== */}
           {aiState === 'loading' && (
             <div className="text-center py-12">
               <div className="animate-spin text-4xl mb-4">⏳</div>
               <p className="text-muted-foreground text-sm">AI正在分析你的想法...</p>
-              <p className="text-xs text-muted-foreground mt-2">按四象限分类 + 设计最小行动</p>
+              <p className="text-xs text-muted-foreground mt-2">按福格行为模型设计最小行动</p>
             </div>
           )}
 
-          {/* ===== AI State: result — show analysis ===== */}
+          {/* ===== AI result ===== */}
           {aiState === 'result' && aiResult && (
             <div className="space-y-4">
-              {/* Category card */}
               <div className="bg-card border-2 border-primary/20 rounded-2xl p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-lg">
@@ -370,29 +309,23 @@ export default function StageFlight({
                 <p className="text-sm text-muted-foreground">{aiResult.categoryReason}</p>
               </div>
 
-              {/* Priority */}
               <div className="bg-card border border-border/30 rounded-2xl p-5">
                 <p className="text-xs text-muted-foreground mb-1">优先事项</p>
                 <p className="font-medium">{aiResult.topPriority}</p>
               </div>
 
-              {/* Minimal action */}
               <div className="bg-primary/5 border border-primary/20 rounded-2xl p-5">
                 <p className="text-xs text-muted-foreground mb-1">最小行动</p>
                 <p className="text-lg font-semibold mb-2">{aiResult.minimalAction.action}</p>
                 <p className="text-sm text-muted-foreground mb-1">{aiResult.minimalAction.motivation}</p>
-                <p className="text-xs text-muted-foreground">
-                  ⏱ {aiResult.minimalAction.duration}
-                </p>
+                <p className="text-xs text-muted-foreground">⏱ {aiResult.minimalAction.duration}</p>
               </div>
 
-              {/* How to start */}
               <div className="bg-card border border-border/30 rounded-2xl p-5">
                 <p className="text-xs text-muted-foreground mb-1">启动指令</p>
                 <p className="text-sm">{aiResult.minimalAction.howToStart}</p>
               </div>
 
-              {/* Alternative actions */}
               {aiResult.alternativeActions.length > 0 && (
                 <div className="bg-card border border-border/30 rounded-2xl p-5">
                   <p className="text-xs text-muted-foreground mb-2">备选方案（如果动不了）</p>
@@ -404,12 +337,10 @@ export default function StageFlight({
                 </div>
               )}
 
-              {/* Energy note */}
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
                 <p className="text-xs text-amber-800">{aiResult.energyNote}</p>
               </div>
 
-              {/* Action buttons */}
               <div className="flex flex-col gap-2 pt-2">
                 <Button onClick={startAction} className="w-full text-base py-6">
                   🎯 开始行动 — {aiResult.minimalAction.duration}
@@ -417,29 +348,22 @@ export default function StageFlight({
                 <Button variant="ghost" onClick={advance} className="text-muted-foreground">
                   先不行动，去碰一下
                 </Button>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setAiState('idle')} className="text-muted-foreground flex-1">
-                    ← 返回分类
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={goBack} className="text-muted-foreground flex-1">
-                    ← 返回
-                  </Button>
-                </div>
+                <Button variant="ghost" onClick={goBack} className="text-muted-foreground">
+                  ← 返回
+                </Button>
               </div>
             </div>
           )}
 
-          {/* ===== AI State: acting — timer + action loop ===== */}
+          {/* ===== AI acting — timer ===== */}
           {aiState === 'acting' && aiResult && !showNewThought && (
             <div className="text-center space-y-5">
-              {/* Action text */}
               <div className="bg-primary/5 border-2 border-primary/30 rounded-2xl p-6">
                 <p className="text-sm text-muted-foreground mb-1">现在做这个：</p>
                 <p className="text-xl font-semibold mb-3">{aiResult.minimalAction.action}</p>
                 <p className="text-sm text-muted-foreground">{aiResult.minimalAction.motivation}</p>
               </div>
 
-              {/* Timer */}
               <div className={`rounded-2xl p-6 ${actionTimerDone ? 'bg-green-50 border border-green-200' : 'bg-card border border-border/30'}`}>
                 {!actionTimerDone ? (
                   <>
@@ -459,7 +383,6 @@ export default function StageFlight({
                 )}
               </div>
 
-              {/* Action buttons during/after timer */}
               <div className="flex flex-col gap-2">
                 {!actionTimerDone ? (
                   <>
@@ -487,6 +410,22 @@ export default function StageFlight({
                   ← 返回
                 </Button>
               </div>
+            </div>
+          )}
+
+          {/* ===== Error (AI failed) ===== */}
+          {aiError && aiState === 'idle' && !showNewThought && (
+            <div className="text-center py-8 space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                <p className="text-sm text-red-700">AI分析请求失败</p>
+                <p className="text-xs text-red-500 mt-1">{aiError}</p>
+              </div>
+              <Button onClick={() => callAI(thoughts)} variant="outline" className="w-full">
+                重试
+              </Button>
+              <Button variant="ghost" onClick={goBack} className="text-muted-foreground">
+                ← 返回
+              </Button>
             </div>
           )}
 
