@@ -16,8 +16,12 @@ interface StageFlightProps {
 }
 
 interface AIAnalysisResult {
-  category: string;
-  categoryReason: string;
+  quadrantType: string;
+  quadrantReason: string;
+  motivationSource: string;
+  actionPurpose: string;
+  handling: string;
+  handlingDetail: string;
   topPriority: string;
   minimalAction: {
     action: string;
@@ -300,14 +304,19 @@ export default function StageFlight({
             <div className="space-y-4">
               <div className="bg-card border-2 border-primary/20 rounded-2xl p-5">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-lg">
-                    {aiResult.category === '重要且紧急' ? '🔥' :
-                     aiResult.category === '重要不紧急' ? '📌' :
-                     aiResult.category === '紧急不重要' ? '📞' : '🗑️'}
+                  <span className="text-lg">🎯</span>
+                  <span className="font-semibold">{aiResult.quadrantType}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    {aiResult.motivationSource} · {aiResult.actionPurpose}
                   </span>
-                  <span className="font-semibold">{aiResult.category}</span>
                 </div>
-                <p className="text-sm text-muted-foreground">{aiResult.categoryReason}</p>
+                <p className="text-sm text-muted-foreground">{aiResult.quadrantReason}</p>
+              </div>
+
+              <div className="bg-card border border-border/30 rounded-2xl p-5">
+                <p className="text-xs text-muted-foreground mb-1">应对策略</p>
+                <p className="font-medium mb-1">{aiResult.handling}</p>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{aiResult.handlingDetail}</p>
               </div>
 
               <div className="bg-card border border-border/30 rounded-2xl p-5">
