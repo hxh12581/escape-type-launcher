@@ -144,11 +144,30 @@ export default function StageFlight({
       }
 
       const text = await res.text();
-      const data = JSON.parse(text);
-      // result 是字符串，需要二次解析
-      const result: AIAnalysisResult = typeof data.result === 'string'
-        ? JSON.parse(data.result)
-        : data.result;
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`返回不是有效JSON: ${text.slice(0, 200)}`);
+      }
+      // result 可能是字符串（需二次解析）或对象
+      let result: AIAnalysisResult;
+      if (typeof data.result === 'string') {
+        try {
+          result = JSON.parse(data.result);
+        } catch {
+          throw new Error(`result字段不是有效JSON: ${(data.result as string).slice(0, 200)}`);
+        }
+      } else if (data.result && typeof data.result === 'object') {
+        result = data.result as AIAnalysisResult;
+      } else {
+        throw new Error(`意外的API响应结构: ${text.slice(0, 200)}`);
+      }
+
+      // 检查AI是否返回了有效内容
+      if (!result.minimalAction?.action) {
+        throw new Error(`AI返回不完整: ${JSON.stringify(result).slice(0, 300)}`);
+      }
 
       setAiResult(result);
       setAiState('result');
