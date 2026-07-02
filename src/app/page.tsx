@@ -6,12 +6,10 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import FullMode from '@/components/FullMode';
 import ChatClient, { CPTSDState } from '@/components/ChatClient';
-import RedSimpleMode from '@/components/RedSimpleMode';
-import YellowFlowMode from '@/components/YellowFlowMode';
 import RestartMode from '@/components/RestartMode';
 
 // 类型定义
-type FlowType = 'entry' | 'energy' | 'quick' | 'restart' | 'full' | 'red_simple' | 'yellow_flow' | 'complete';
+type FlowType = 'entry' | 'energy' | 'quick' | 'restart' | 'full' | 'complete';
 type EnergyLevel = 'red' | 'yellow' | 'green';
 type QuickStep = 'energy' | 'attention' | 'action';
 type EntryChoice = 'daily' | 'blank' | 'distracted' | 'important' | null;
@@ -170,6 +168,7 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [cptsdState, setCptsdState] = useState<CPTSDState | null>(null);
   const [quickAttentionStep, setQuickAttentionStep] = useState<'counting' | 'input'>('counting');
+  const [quickRedAlarm, setQuickRedAlarm] = useState(false);
 
   const updateCPTSDState = (newState: Partial<CPTSDState>) => {
     if (typeof window === 'undefined') return;
@@ -260,20 +259,12 @@ export default function Home() {
         quickStep: choice === 'distracted' ? 'attention' : 'action',
       }));
     } else if (choice === 'important') {
-      // 重要的事 → 黄灯或完整模式
-      if (level === 'yellow') {
-        setState(prev => ({
-          ...prev,
-          energyLevel: level,
-          flowType: 'yellow_flow',
-        }));
-      } else {
-        setState(prev => ({
-          ...prev,
-          energyLevel: level,
-          flowType: 'full',
-        }));
-      }
+      // 重要的事 → FullMode（内置红/黄/绿三色分支）
+      setState(prev => ({
+        ...prev,
+        energyLevel: level,
+        flowType: 'full',
+      }));
     }
   };
 
@@ -287,6 +278,7 @@ export default function Home() {
       firstStep: '',
       countdown: 0,
     });
+    setQuickRedAlarm(false);
   };
 
   const handleComplete = () => {
@@ -322,9 +314,7 @@ export default function Home() {
             <span className="text-xs text-muted-foreground font-medium">
               {state.flowType === 'quick' ? '快速模式' :
                state.flowType === 'restart' ? '重启模式' :
-               state.flowType === 'full' ? '完整模式' :
-               state.flowType === 'red_simple' ? '红灯模式' :
-               state.flowType === 'yellow_flow' ? '黄灯模式' : ''}
+               state.flowType === 'full' ? '完整模式' : ''}
             </span>
             <div className="w-16" />
           </div>
@@ -524,30 +514,49 @@ export default function Home() {
                 {/* 红灯最小动作：简化版 */}
                 {state.energyLevel === 'red' ? (
                   <>
-                    <Input
-                      value={state.firstStep}
-                      onChange={e => setState(prev => ({ ...prev, firstStep: e.target.value }))}
-                      placeholder="这件事最小的第一步是什么？"
-                      className="mb-4"
-                    />
-                    {state.firstStep.trim() && (
+                    {!quickRedAlarm ? (
+                      <>
+                        <Input
+                          value={state.firstStep}
+                          onChange={e => setState(prev => ({ ...prev, firstStep: e.target.value }))}
+                          placeholder="这件事最小的第一步是什么？"
+                          className="mb-4"
+                        />
+                        {state.firstStep.trim() && (
+                          <div className="space-y-4">
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-center">
+                              疗愈助手已自动打开，和它聊聊再设定闹钟吧
+                            </div>
+                            <button
+                              className="w-full py-3.5 bg-primary text-primary-foreground rounded-xl font-semibold text-lg hover:opacity-90 transition-opacity active:scale-[0.98]"
+                              onClick={() => {
+                                // 触发AI驳斥内在批判者
+                                const event = new CustomEvent('openChatSDK', {
+                                  detail: {
+                                    initialMessage: `我在${state.entryChoice === 'daily' ? '日常小事拖延' : '被手机拐跑注意力'}，能量🔴，快速模式。请驳斥内在批判者。`
+                                  }
+                                });
+                                window.dispatchEvent(event);
+                                setQuickRedAlarm(true);
+                              }}
+                            >
+                              💬 聊完了，设闹钟
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
                       <div className="space-y-4">
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-center">
-                          疗愈助手已自动打开，和它聊聊再设定闹钟吧
+                        <div className="bg-accent/50 rounded-xl p-4">
+                          <p className="text-sm text-muted-foreground text-center">
+                            ⏰ 在你的手机上设一个5分钟闹钟。闹钟响之前只做这件事。
+                          </p>
                         </div>
                         <button
                           className="w-full py-3.5 bg-primary text-primary-foreground rounded-xl font-semibold text-lg hover:opacity-90 transition-opacity active:scale-[0.98]"
-                          onClick={() => {
-                            // 触发AI驳斥内在批判者
-                            const event = new CustomEvent('openChatSDK', {
-                              detail: {
-                                initialMessage: `我在${state.entryChoice === 'daily' ? '日常小事拖延' : '被手机拐跑注意力'}，能量🔴，快速模式。请驳斥内在批判者。`
-                              }
-                            });
-                            window.dispatchEvent(event);
-                          }}
+                          onClick={handleComplete}
                         >
-                          💬 聊完了，设闹钟
+                          ✅ 闹钟设好了，开始！
                         </button>
                       </div>
                     )}
@@ -613,24 +622,6 @@ export default function Home() {
             onRestart={handleRestart}
             updateCPTSDState={updateCPTSDState}
             energyLevel={state.energyLevel || 'green'}
-          />
-        )}
-
-        {/* ======== 红灯简化模式 ======== */}
-        {state.flowType === 'red_simple' && (
-          <RedSimpleMode
-            onComplete={handleComplete}
-            onRestart={handleRestart}
-            updateCPTSDState={updateCPTSDState}
-          />
-        )}
-
-        {/* ======== 黄灯流程模式 ======== */}
-        {state.flowType === 'yellow_flow' && (
-          <YellowFlowMode
-            onComplete={handleComplete}
-            onRestart={handleRestart}
-            updateCPTSDState={updateCPTSDState}
           />
         )}
 
