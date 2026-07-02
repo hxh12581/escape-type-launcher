@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 
-const WORKFLOW_API = '/api/run';
+// 生产用同域 Pages Function，开发用本地代理（由 .env.local 控制）
+const WORKFLOW_API = process.env.NEXT_PUBLIC_COZE_API_URL || '/api/run';
 
 interface StageFlightProps {
   energyLevel: 'red' | 'yellow' | 'green';
