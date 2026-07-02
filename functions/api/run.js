@@ -7,11 +7,7 @@ export async function onRequest(context) {
   const token = env.COZE_TOKEN;
 
   if (!token) {
-    const keys = Object.keys(env).join(', ');
-    return new Response(JSON.stringify({
-      error: 'COZE_TOKEN not configured',
-      debug: `env keys available: ${keys || '(none)'}`,
-    }), {
+    return new Response(JSON.stringify({ error: 'COZE_TOKEN not configured' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
